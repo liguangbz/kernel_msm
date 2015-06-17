@@ -32,6 +32,7 @@
 #include <linux/device.h>
 #include <linux/efi.h>
 #include <linux/fb.h>
+#include <linux/fb_devns.h>
 
 #include <asm/fb.h>
 
@@ -730,17 +731,28 @@ static struct fb_info *file_fb_info(struct file *file)
 	struct inode *inode = file->f_path.dentry->d_inode;
 	int fbidx = iminor(inode);
 	struct fb_info *info = registered_fb[fbidx];
+        struct fb_info *virt_info = file->private_data;
 
-	if (info != file->private_data)
-		info = NULL;
-	return info;
+	if (info != fb_virt_to_info(virt_info))
+		virt_info = NULL;
+	return virt_info;
+}
+
+static struct fb_info *file_fb_info_ns(struct file *file)
+{
+       struct fb_info *info;
+
+       info = file_fb_info(file);
+       if (info != NULL)
+              info = fb_virt_to_info_ns(info);
+       return info;
 }
 
 static ssize_t
 fb_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 	unsigned long p = *ppos;
-	struct fb_info *info = file_fb_info(file);
+	struct fb_info *info = file_fb_info_ns(file);
 	u8 *buffer, *dst;
 	u8 __iomem *src;
 	int c, cnt = 0, err = 0;
@@ -754,7 +766,7 @@ fb_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 
 	if (info->fbops->fb_read)
 		return info->fbops->fb_read(info, buf, count, ppos);
-	
+
 	total_size = info->screen_size;
 
 	if (total_size == 0)
@@ -805,7 +817,7 @@ static ssize_t
 fb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
 	unsigned long p = *ppos;
-	struct fb_info *info = file_fb_info(file);
+	struct fb_info *info = file_fb_info_ns(file);
 	u8 *buffer, *src;
 	u8 __iomem *dst;
 	int c, cnt = 0, err = 0;
@@ -1045,16 +1057,16 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
 
 int
 fb_blank(struct fb_info *info, int blank)
-{	
- 	int ret = -EINVAL;
+{
+	int ret = -EINVAL;
 
- 	if (blank > FB_BLANK_POWERDOWN)
- 		blank = FB_BLANK_POWERDOWN;
+	if (blank > FB_BLANK_POWERDOWN)
+		blank = FB_BLANK_POWERDOWN;
 
 	if (info->fbops->fb_blank)
- 		ret = info->fbops->fb_blank(blank, info);
+		ret = info->fbops->fb_blank(blank, info);
 
- 	if (!ret) {
+	if (!ret) {
 		struct fb_event event;
 
 		event.info = info;
@@ -1062,7 +1074,7 @@ fb_blank(struct fb_info *info, int blank)
 		fb_notifier_call_chain(FB_EVENT_BLANK, &event);
 	}
 
- 	return ret;
+	return ret;
 }
 
 static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
@@ -1077,6 +1089,9 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct fb_event event;
 	void __user *argp = (void __user *)arg;
 	long ret = 0;
+        struct fb_info *virt = info;
+
+        info = fb_virt_to_info_ns(virt);
 
 	switch (cmd) {
 	case FBIOGET_VSCREENINFO:
@@ -1194,7 +1209,7 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 
 static long fb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-	struct fb_info *info = file_fb_info(file);
+	struct fb_info *info = file_fb_info_ns(file);
 
 	if (!info)
 		return -ENODEV;
@@ -1318,7 +1333,7 @@ static int fb_get_fscreeninfo(struct fb_info *info, unsigned int cmd,
 static long fb_compat_ioctl(struct file *file, unsigned int cmd,
 			    unsigned long arg)
 {
-	struct fb_info *info = file_fb_info(file);
+	struct fb_info *info = file_fb_info_ns(file);
 	struct fb_ops *fb;
 	long ret = -ENOIOCTLCMD;
 
@@ -1357,7 +1372,7 @@ static long fb_compat_ioctl(struct file *file, unsigned int cmd,
 static int
 fb_mmap(struct file *file, struct vm_area_struct * vma)
 {
-	struct fb_info *info = file_fb_info(file);
+	struct fb_info *info = file_fb_info_ns(file);
 	struct fb_ops *fb;
 	unsigned long off;
 	unsigned long start;
@@ -1415,6 +1430,8 @@ __releases(&info->lock)
 {
 	int fbidx = iminor(inode);
 	struct fb_info *info;
+        struct fb_info *virt_info = NULL;
+        bool tracked = false;
 	int res = 0;
 
 	info = get_fb_info(fbidx);
@@ -1433,6 +1450,20 @@ __releases(&info->lock)
 		goto out;
 	}
 	file->private_data = info;
+        virt_info = get_fb_info_ns(info);
+        if (virt_info == NULL) {
+                res = -ENOMEM;
+                module_put(info->fbops->owner);
+                goto out;
+        }
+        file->private_data = virt_info;
+        res = track_fb_inode(virt_info, inode);
+        if (res) {
+                module_put(info->fbops->owner);
+                goto out;
+        }
+        tracked = true;
+
 	if (info->fbops->fb_open) {
 		res = info->fbops->fb_open(info,1);
 		if (res)
@@ -1444,8 +1475,12 @@ __releases(&info->lock)
 #endif
 out:
 	mutex_unlock(&info->lock);
-	if (res)
+	if (res) {
+                if (tracked)
+                        untrack_fb_inode(virt_info, inode);
+                put_fb_info_ns(virt_info);
 		put_fb_info(info);
+        }
 	return res;
 }
 
@@ -1461,6 +1496,8 @@ __releases(&info->lock)
 		info->fbops->fb_release(info,1);
 	module_put(info->fbops->owner);
 	mutex_unlock(&info->lock);
+        untrack_fb_inode(info, inode);
+        put_fb_info_ns(info);
 	put_fb_info(info);
 	return 0;
 }
