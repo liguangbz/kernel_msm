@@ -20,6 +20,7 @@
 #include <linux/ctype.h>
 #include <linux/leds.h>
 #include "leds.h"
+#include <linux/dev_namespace.h>
 
 #define LED_BUFF_SIZE 50
 
@@ -57,6 +58,11 @@ static ssize_t led_brightness_store(struct device *dev,
 	if (count == size) {
 		ret = count;
 
+                if (!is_active_dev_ns(current_dev_ns())) {
+                        printk(KERN_INFO "led_brightness: not setting %s to %ld from inactive container.\n",
+                        dev_name(dev), state);
+                        return ret;
+                }
 		if (state == LED_OFF)
 			led_trigger_remove(led_cdev);
 		led_set_brightness(led_cdev, state);
