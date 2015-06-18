@@ -14,6 +14,7 @@
 #include <linux/err.h>
 #include <linux/fb.h>
 #include <linux/slab.h>
+#include <linux/dev_namespace.h>
 
 #ifdef CONFIG_PMAC_BACKLIGHT
 #include <asm/backlight.h>
@@ -121,6 +122,11 @@ static ssize_t backlight_store_power(struct device *dev,
 		return rc;
 
 	rc = -ENXIO;
+
+        if (!is_active_dev_ns(current_dev_ns())) {
+                printk(KERN_INFO"forbid backlight power setting, you are inactive ns.\n");
+                return count;
+        }
 	mutex_lock(&bd->ops_lock);
 	if (bd->ops) {
 		pr_debug("backlight: set power to %lu\n", power);
@@ -155,6 +161,11 @@ static ssize_t backlight_store_brightness(struct device *dev,
 		return rc;
 
 	rc = -ENXIO;
+
+        if (!is_active_dev_ns(current_dev_ns())) {
+                printk(KERN_INFO"forbid brightness setting, you are inactive ns.\n");
+                return count;
+        }
 
 	mutex_lock(&bd->ops_lock);
 	if (bd->ops) {
