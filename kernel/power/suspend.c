@@ -26,6 +26,7 @@
 #include <linux/syscore_ops.h>
 #include <linux/rtc.h>
 #include <trace/events/power.h>
+#include <linux/dev_namespace.h>
 
 #include "power.h"
 
@@ -327,6 +328,9 @@ int pm_suspend(suspend_state_t state)
 {
 	int error;
 
+        if (!is_active_dev_ns(current_dev_ns())) {
+                pr_info("PM: reject suspend from inactive ns");
+        }
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
 

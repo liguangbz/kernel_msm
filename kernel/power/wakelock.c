@@ -16,6 +16,7 @@
 #include <linux/list.h>
 #include <linux/rbtree.h>
 #include <linux/slab.h>
+#include <linux/dev_namespace.h>
 
 static DEFINE_MUTEX(wakelocks_lock);
 
@@ -187,6 +188,11 @@ int pm_wake_lock(const char *buf)
 	u64 timeout_ns = 0;
 	size_t len;
 	int ret = 0;
+
+        if (!is_active_dev_ns(current_dev_ns())) {
+                printk(KERN_ERR"reject wakelock from inactive ns\n");
+                return -EINVAL;
+        }
 
 	while (*str && !isspace(*str))
 		str++;
