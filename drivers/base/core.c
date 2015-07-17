@@ -25,6 +25,7 @@
 #include <linux/mutex.h>
 #include <linux/async.h>
 #include <linux/pm_runtime.h>
+#include <linux/dev_namespace.h>
 
 #include "base.h"
 #include "power/power.h"
@@ -41,6 +42,20 @@ static __init int sysfs_deprecated_setup(char *arg)
 }
 early_param("sysfs.deprecated", sysfs_deprecated_setup);
 #endif
+
+struct dev_namespace init_dev_ns = {
+            .active = true,
+            .count = ATOMIC_INIT(2),  /* extra reference for active_dev_ns */
+            .pid_ns = &init_pid_ns,
+            .notifiers = BLOCKING_NOTIFIER_INIT(init_dev_ns.notifiers),
+            .timestamp = 0,
+            .mutex = __MUTEX_INITIALIZER(init_dev_ns.mutex),
+            .info = { NULL },
+};
+EXPORT_SYMBOL_GPL(init_dev_ns);
+
+struct dev_namespace *active_dev_ns = &init_dev_ns;
+EXPORT_SYMBOL_GPL(active_dev_ns);
 
 int (*platform_notify)(struct device *dev) = NULL;
 int (*platform_notify_remove)(struct device *dev) = NULL;

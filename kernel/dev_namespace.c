@@ -47,24 +47,8 @@
 #include <linux/atomic.h>
 #include <linux/uaccess.h>
 
-
 /* protects active namespace and switches */
 static DECLARE_RWSEM(global_dev_ns_lock);
-
-
-struct dev_namespace init_dev_ns = {
-	.active = true,
-	.count = ATOMIC_INIT(2),  /* extra reference for active_dev_ns */
-	.pid_ns = &init_pid_ns,
-	.notifiers = BLOCKING_NOTIFIER_INIT(init_dev_ns.notifiers),
-	.timestamp = 0,
-	.mutex = __MUTEX_INITIALIZER(init_dev_ns.mutex),
-};
-EXPORT_SYMBOL_GPL(init_dev_ns);
-
-
-struct dev_namespace *active_dev_ns = &init_dev_ns;
-
 
 static void dev_ns_lock(struct dev_namespace *dev_ns)
 {
@@ -79,6 +63,7 @@ static void dev_ns_unlock(struct dev_namespace *dev_ns)
 static struct dev_namespace *create_dev_ns(struct task_struct *task)
 {
 	struct dev_namespace *dev_ns;
+        static int s_ndev = 0;
 
 	dev_ns = kzalloc(sizeof(struct dev_namespace), GFP_KERNEL);
 	if (!dev_ns)
@@ -87,6 +72,8 @@ static struct dev_namespace *create_dev_ns(struct task_struct *task)
 	atomic_set(&dev_ns->count, 1);
 	BLOCKING_INIT_NOTIFIER_HEAD(&dev_ns->notifiers);
 	mutex_init(&dev_ns->mutex);
+        snprintf(dev_ns->tag, DEV_NS_TAG_LEN, "dev_ns.%d", ++s_ndev);
+        dev_ns->tag[DEV_NS_TAG_LEN-1] = '\0';
 
 	dev_ns->pid_ns = get_pid_ns(task->nsproxy->pid_ns);
 
@@ -250,13 +237,13 @@ static struct dev_ns_info *new_dev_ns_info(int dev_ns_id,
 	struct dev_ns_desc *desc = &dev_ns_desc[dev_ns_id];
 	struct dev_ns_info *dev_ns_info;
 
-	pr_debug("dev_ns: [0x%p] new info %s\n", dev_ns, desc->name);
+	printk(KERN_ERR"dev_ns: [0x%p] new info %s\n", dev_ns, desc->name);
 
 	dev_ns_info = desc->ops->create(dev_ns);
-	if (!IS_ERR_OR_NULL(dev_ns_info))
+	if (IS_ERR_OR_NULL(dev_ns_info))
 		return NULL;
 
-	pr_debug("dev_ns: [0x%p] got info 0x%p\n", dev_ns, dev_ns_info);
+	printk(KERN_ERR"dev_ns: [0x%p] got info 0x%p\n", dev_ns, dev_ns_info);
 
 	dev_ns->info[dev_ns_id] = dev_ns_info;
 	dev_ns_info->dev_ns = get_dev_ns(dev_ns);
@@ -331,12 +318,16 @@ struct dev_ns_info *get_dev_ns_info(int dev_ns_id,
 
 struct dev_ns_info *get_dev_ns_info_task(int dev_ns_id, struct task_struct *tsk)
 {
-	struct dev_ns_info *dev_ns_info;
+	struct dev_ns_info *dev_ns_info = NULL;
 	struct dev_namespace *dev_ns;
 
 	dev_ns = get_dev_ns_by_task(tsk);
-	dev_ns_info = dev_ns ? get_dev_ns_info(dev_ns_id, dev_ns, 1, 1) : NULL;
-	put_dev_ns(dev_ns);
+        printk(KERN_ERR"devns: addr: %p, comm: %s", dev_ns, tsk->comm);
+        if (dev_ns) {
+        printk(KERN_ERR"devns: tag: %s", dev_ns->tag);
+                dev_ns_info = get_dev_ns_info(dev_ns_id, dev_ns, 1, 1);
+                put_dev_ns(dev_ns);
+        }
 
 	return dev_ns_info;
 }

@@ -189,7 +189,7 @@ int pm_wake_lock(const char *buf)
 	size_t len;
 	int ret = 0;
 
-        if (!is_active_dev_ns(current_dev_ns())) {
+        if (!is_active_init_dev_ns(current_dev_ns())) {
                 printk(KERN_ERR"reject wakelock from inactive ns\n");
                 return -EINVAL;
         }

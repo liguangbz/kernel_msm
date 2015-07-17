@@ -328,7 +328,7 @@ int pm_suspend(suspend_state_t state)
 {
 	int error;
 
-        if (!is_active_dev_ns(current_dev_ns())) {
+        if (!is_active_init_dev_ns(current_dev_ns())) {
                 pr_info("PM: reject suspend from inactive ns");
         }
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)

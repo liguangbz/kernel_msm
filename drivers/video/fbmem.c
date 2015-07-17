@@ -831,7 +831,7 @@ fb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 
 	if (info->fbops->fb_write)
 		return info->fbops->fb_write(info, buf, count, ppos);
-	
+
 	total_size = info->screen_size;
 
 	if (total_size == 0)
@@ -1489,15 +1489,16 @@ fb_release(struct inode *inode, struct file *file)
 __acquires(&info->lock)
 __releases(&info->lock)
 {
-	struct fb_info * const info = file->private_data;
+        struct fb_info * const virt = file->private_data;
+	struct fb_info * const info = fb_virt_to_info(virt);
 
 	mutex_lock(&info->lock);
 	if (info->fbops->fb_release)
 		info->fbops->fb_release(info,1);
 	module_put(info->fbops->owner);
 	mutex_unlock(&info->lock);
-        untrack_fb_inode(info, inode);
-        put_fb_info_ns(info);
+        untrack_fb_inode(virt, inode);
+        put_fb_info_ns(virt);
 	put_fb_info(info);
 	return 0;
 }

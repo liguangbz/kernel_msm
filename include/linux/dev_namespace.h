@@ -26,7 +26,7 @@
 
 #ifdef __KERNEL__
 
-#define DEV_NS_TAG_LEN 4
+#define DEV_NS_TAG_LEN 16
 #define DEV_NS_DESC_MAX 16
 
 struct dev_namespace;
@@ -45,6 +45,9 @@ struct dev_namespace {
 	struct dev_ns_info *info[DEV_NS_DESC_MAX];
 };
 
+extern struct dev_namespace init_dev_ns;
+extern struct dev_namespace *active_dev_ns;
+
 struct dev_ns_info {
 	struct dev_namespace *dev_ns;
 	struct list_head list;
@@ -60,9 +63,6 @@ struct dev_ns_ops {
 /* device namespace notifications */
 #define DEV_NS_EVENT_ACTIVATE		0x1
 #define DEV_NS_EVENT_DEACTIVATE		0x2
-
-extern struct dev_namespace init_dev_ns;
-extern struct dev_namespace *active_dev_ns;
 
 extern void __put_dev_ns(struct dev_namespace *dev_ns);
 
@@ -81,7 +81,8 @@ static inline struct dev_namespace *get_dev_ns(struct dev_namespace *dev_ns)
 /* return the device namespaces of the current process */
 static inline struct dev_namespace *current_dev_ns(void)
 {
-	BUG_ON(in_interrupt());
+        if (in_interrupt())
+                return &init_dev_ns;
 	return current->nsproxy->dev_ns;
 }
 
@@ -89,6 +90,11 @@ static inline struct dev_namespace *current_dev_ns(void)
 static inline bool is_active_dev_ns(struct dev_namespace *dev_ns)
 {
 	return dev_ns->active;
+}
+
+static inline bool is_active_init_dev_ns(struct dev_namespace *dev_ns)
+{
+        return is_active_dev_ns(dev_ns) || (dev_ns == &init_dev_ns) ;
 }
 
 /* return and get the device namespace of a given task */
@@ -216,56 +222,6 @@ extern void loop_dev_ns_info(int ns_id, void *ptr,
 
 #define DEV_NS_UNREGISTER(X) \
 	unregister_dev_ns_ops(X ## _ns_id)
-
-
-#else  /* !CONFIG_DEV_NS */
-
-/* appease static assignment in kernel/nsproxy.c */
-#define init_dev_ns (*(struct dev_namespace *) NULL)
-
-/*
- * Driver authors should use this macro instead if !CONFIG_DEV_NS:
- * DEFINE_DEV_NS_INIT(X): put_X_ns(), get_X_ns(), get_X_ns_cur()
- */
-#define DEFINE_DEV_NS_INIT(x) \
-	struct x ## _dev_ns init_ ## x ## _ns; \
-	static inline \
-	struct x ## _dev_ns *find_ ## x ## _ns(struct dev_namespace *dev_ns) \
-	{ return &init_ ## x ## _ns; } \
-	struct x ## _dev_ns *get_ ## x ## _ns(struct dev_namespace *dev_ns) \
-	{ return &init_ ## x ## _ns; } \
-	static inline struct x ## _dev_ns *get_ ## x ## _ns_cur(void) \
-	{ return &init_ ## x ## _ns; } \
-	static inline void put_ ## x ## _ns(struct x ## _dev_ns *x ## _ns) \
-	{ /* */ } \
-        static inline bool is_active_ ## x ##_ns(struct x ## _dev_ns *ns) \
-        { return true; }
-
-static inline struct dev_namespace *current_dev_ns(void)
-{ return &init_dev_ns; }
-
-static inline struct dev_namespace *copy_dev_ns(unsigned long flags,
-						struct task_struct *task)
-{
-	if (flags & CLONE_NEWPID)
-		return ERR_PTR(-EINVAL);
-	return task->nsproxy->dev_ns;
-}
-
-static inline pid_t dev_ns_init_pid(struct dev_namespace *dev_ns)
-{
-	return init_task.pid;
-}
-
-static inline get_dev_ns_tag(char *to, struct dev_namespace *dev_ns)
-{
-	strcpy(to, "");
-}
-
-static inline struct nsproxy *dev_ns_nsproxy(struct dev_namespace *dev_ns)
-{
-        return task_nsproxy(dev_ns->pid_ns->child_reaper);
-}
 
 #endif /* __KERNEL__ */
 #endif /* _LINUX_DEV_NS_H */

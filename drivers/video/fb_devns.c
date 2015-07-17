@@ -251,7 +251,7 @@ bool fb_virt_is_active(struct fb_info *virt)
 	BUG_ON(!fb_info_is_virt(virt));
 
 	fb_ns_info = virt->par;
-	return is_active_dev_ns(fb_ns_info->fb_ns->dev_ns_info.dev_ns);
+	return is_active_init_dev_ns(fb_ns_info->fb_ns->dev_ns_info.dev_ns);
 }
 
 /* Given a fb, convert from virt info to HW info (if necessary) */
