@@ -191,7 +191,7 @@ int pm_wake_lock(const char *buf)
 
         if (!is_active_init_dev_ns(current_dev_ns())) {
                 printk(KERN_ERR"reject wakelock from inactive ns\n");
-                return -EINVAL;
+                return 0;
         }
 
 	while (*str && !isspace(*str))
@@ -247,6 +247,10 @@ int pm_wake_unlock(const char *buf)
 	if (!len)
 		return -EINVAL;
 
+        if (!is_active_init_dev_ns(current_dev_ns())) {
+                printk(KERN_ERR"reject wakelock from inactive ns\n");
+                return 0;
+        }
 	mutex_lock(&wakelocks_lock);
 
 	wl = wakelock_lookup_add(buf, len, false);
