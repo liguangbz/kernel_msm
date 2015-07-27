@@ -237,13 +237,9 @@ static struct dev_ns_info *new_dev_ns_info(int dev_ns_id,
 	struct dev_ns_desc *desc = &dev_ns_desc[dev_ns_id];
 	struct dev_ns_info *dev_ns_info;
 
-	printk(KERN_ERR"dev_ns: [0x%p] new info %s\n", dev_ns, desc->name);
-
 	dev_ns_info = desc->ops->create(dev_ns);
 	if (IS_ERR_OR_NULL(dev_ns_info))
 		return NULL;
-
-	printk(KERN_ERR"dev_ns: [0x%p] got info 0x%p\n", dev_ns, dev_ns_info);
 
 	dev_ns->info[dev_ns_id] = dev_ns_info;
 	dev_ns_info->dev_ns = get_dev_ns(dev_ns);
@@ -322,9 +318,7 @@ struct dev_ns_info *get_dev_ns_info_task(int dev_ns_id, struct task_struct *tsk)
 	struct dev_namespace *dev_ns;
 
 	dev_ns = get_dev_ns_by_task(tsk);
-        printk(KERN_ERR"devns: addr: %p, comm: %s", dev_ns, tsk->comm);
         if (dev_ns) {
-        printk(KERN_ERR"devns: tag: %s", dev_ns->tag);
                 dev_ns_info = get_dev_ns_info(dev_ns_id, dev_ns, 1, 1);
                 put_dev_ns(dev_ns);
         }
